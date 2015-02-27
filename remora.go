@@ -73,6 +73,8 @@ func main() {
 			continue
 		}
 
+		etcdClient.SyncCluster()
+
 		for _, container := range containers {
 			for _, name := range container.Names {
 				if name == containerName {
