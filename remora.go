@@ -7,7 +7,6 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -16,15 +15,16 @@ import (
 )
 
 var (
-	etcdPeers, dockerEndpoint, hostIP, containerPort string
-	interval                                         time.Duration
+	etcdPeers, dockerEndpoint, hostIP string
+	containerPort                     int64
+	interval                          time.Duration
 )
 
 func init() {
 	flag.StringVar(&etcdPeers, "C", "http://127.0.0.1:4001", "a comma-delimited list of machine addresses in the etcd cluster")
 	flag.StringVar(&dockerEndpoint, "H", "unix:///var/run/docker.sock", "connection string for the Docker daemon")
 	flag.StringVar(&hostIP, "a", "127.0.0.1", "host IP address")
-	flag.StringVar(&containerPort, "p", "80", "container port to report")
+	flag.Int64Var(&containerPort, "p", 80, "container port to report")
 	flag.DurationVar(&interval, "i", time.Minute, "interval length")
 }
 
@@ -55,7 +55,7 @@ func main() {
 	etcdClient := etcd.NewClient(strings.Split(etcdPeers, ","))
 	fmt.Println(etcdClient)
 
-	containerID := flag.Arg(0)
+	containerName := fmt.Sprintf("/%s", flag.Arg(0))
 	etcdKey := flag.Arg(1)
 	n := interval.Nanoseconds()
 	nd2 := n / 2
@@ -67,41 +67,26 @@ func main() {
 		log.Printf("sleeping %d nanoseconds", sleep)
 		time.Sleep(time.Duration(sleep) * time.Nanosecond)
 
-		// Inspect the the given container. The relevant port-bindings should be
-		// present in the resulting container definition.
-		container, err := dockerClient.InspectContainer(containerID)
+		containers, err := dockerClient.ListContainers(docker.ListContainersOptions{All: true})
 		if err != nil {
 			log.Printf("error: %s", err.Error())
 			continue
 		}
 
-		// Attempt to find a port-binding for the given container port.
-		var containerPortBinding string
-		for port, portBinding := range container.NetworkSettings.Ports {
-			if port.Port() == containerPort {
-				containerPortBinding = portBinding[0].HostPort
+		for _, container := range containers {
+			for _, name := range container.Names {
+				if name == containerName {
+					for _, port := range container.Ports {
+						if containerPort == port.PrivatePort {
+							value := fmt.Sprintf("%s:%d", hostIP, port.PublicPort)
+							log.Printf("setting %s", value)
+							if _, err := etcdClient.Set(etcdKey, value, uint64(interval.Seconds())+1); err != nil {
+								log.Printf("error: %s", err.Error())
+							}
+						}
+					}
+				}
 			}
-		}
-
-		// Insure the port number can be converted to a number.
-		port, err := strconv.Atoi(containerPortBinding)
-		if err != nil {
-			log.Printf("error: %s", err.Error())
-			continue
-		}
-
-		// Insure the port number is valid.
-		if port <= 0 {
-			log.Printf("error: invalid port %d from parsed string \"%s\"", port, containerPortBinding)
-			continue
-		}
-
-		// Save the value in etcd.
-		etcdClient.SyncCluster()
-		log.Println(etcdClient.GetCluster())
-		value := fmt.Sprintf("%s:%s", hostIP, containerPortBinding)
-		if _, err := etcdClient.Set(etcdKey, value, uint64(interval.Seconds())+1); err != nil {
-			log.Printf("error: %s", err.Error())
 		}
 	}
 }
