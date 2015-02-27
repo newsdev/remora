@@ -97,6 +97,7 @@ func main() {
 		}
 
 		// Save the value in etcd.
+		etcdClient.SyncCluster()
 		value := fmt.Sprintf("%s:%s", hostIP, containerPortBinding)
 		if _, err := etcdClient.Set(etcdKey, value, uint64(interval.Seconds())+1); err != nil {
 			log.Printf("error: %s", err.Error())
