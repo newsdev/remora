@@ -73,8 +73,6 @@ func main() {
 			continue
 		}
 
-		etcdClient.SyncCluster()
-
 		for _, container := range containers {
 			for _, name := range container.Names {
 				if name == containerName {
@@ -82,6 +80,15 @@ func main() {
 						if containerPort == port.PrivatePort {
 							value := fmt.Sprintf("%s:%d", hostIP, port.PublicPort)
 							log.Printf("setting %s", value)
+
+							dirs := strings.Split(etcdKey, "/")
+							for i := 2; i < len(dirs); i++ {
+								if _, err := etcdClient.RawSetDir(strings.Join(dirs[0:i], "/"), 0); err != nil {
+									log.Printf("error: %s", err.Error())
+									continue
+								}
+							}
+
 							if _, err := etcdClient.Set(etcdKey, value, uint64(interval.Seconds())+1); err != nil {
 								log.Printf("error: %s", err.Error())
 							}
