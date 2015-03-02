@@ -18,7 +18,7 @@ import (
 var (
 	etcdPeers, dockerEndpoint, hostIP string
 	containerPort                     int64
-	interval                          time.Duration
+	interval, buffer                  time.Duration
 	useJSON                           bool
 )
 
@@ -27,7 +27,8 @@ func init() {
 	flag.StringVar(&dockerEndpoint, "H", "unix:///var/run/docker.sock", "connection string for the Docker daemon")
 	flag.StringVar(&hostIP, "a", "127.0.0.1", "host IP address")
 	flag.Int64Var(&containerPort, "p", 80, "container port to report")
-	flag.DurationVar(&interval, "i", time.Minute, "interval length")
+	flag.DurationVar(&interval, "i", 30*time.Second, "interval length")
+	flag.DurationVar(&interval, "b", 5*time.Second, "buffer length")
 	flag.BoolVar(&useJSON, "j", false, "set values in etcd as JSON")
 }
 
@@ -60,20 +61,13 @@ func main() {
 	}
 
 	// Setup a new etcd client.
-
-	fmt.Println(etcdPeers)
-	etcdClient := etcd.NewClient([]string{})
-	synced := etcdClient.SetCluster(strings.Split(etcdPeers, ","))
-	fmt.Println(synced)
-	fmt.Println(etcdClient)
-	fmt.Println(etcdClient.GetCluster())
+	etcdClient := etcd.NewClient(strings.Split(etcdPeers, ","))
 
 	// containerName := fmt.Sprintf("/%s", flag.Arg(0))
 	etcdKey := flag.Arg(1)
-	nd2 := interval.Nanoseconds() / 2
 
 	// The loop.
-	for sleep := int64(0); ; sleep = nd2 + rand.Int63n(nd2) {
+	for sleep := int64(0); ; sleep = rand.Int63n(interval.Nanoseconds()) {
 		log.Printf("sleeping %d nanoseconds", sleep)
 		time.Sleep(time.Duration(sleep) * time.Nanosecond)
 
@@ -109,7 +103,7 @@ func main() {
 
 				// Log the value and set it in etcd.
 				log.Printf("setting value `%s`", value)
-				if _, err := etcdClient.Set(etcdKey, value, uint64(interval.Seconds())+1); err != nil {
+				if _, err := etcdClient.Set(etcdKey, value, uint64(interval.Seconds()+buffer.Seconds())); err != nil {
 					log.Printf("etcd error: %s", err.Error())
 					break
 				}
