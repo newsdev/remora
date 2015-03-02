@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -10,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/coreos/go-etcd/etcd"
+	"github.com/buth/remora/vendor/src/github.com/coreos/go-etcd/etcd"
 	docker "github.com/fsouza/go-dockerclient"
 )
 
@@ -18,6 +19,7 @@ var (
 	etcdPeers, dockerEndpoint, hostIP string
 	containerPort                     int64
 	interval                          time.Duration
+	useJSON                           bool
 )
 
 func init() {
@@ -26,6 +28,12 @@ func init() {
 	flag.StringVar(&hostIP, "a", "127.0.0.1", "host IP address")
 	flag.Int64Var(&containerPort, "p", 80, "container port to report")
 	flag.DurationVar(&interval, "i", time.Minute, "interval length")
+	flag.BoolVar(&useJSON, "j", false, "set values in etcd as JSON")
+}
+
+type jsonValue struct {
+	Host string `json:"host"`
+	Port int64  `json:"port"`
 }
 
 func main() {
@@ -42,59 +50,73 @@ func main() {
 			log.Fatalf("error: %s", err.Error())
 		}
 	} else {
-		key := filepath.Join(dockerCertPath, "key.pem")
-		cert := filepath.Join(dockerCertPath, "cert.pem")
-		ca := filepath.Join(dockerCertPath, "ca.pem")
-		dockerClient, err = docker.NewTLSClient(dockerEndpoint, cert, key, ca)
+		keyFile := filepath.Join(dockerCertPath, "key.pem")
+		certFile := filepath.Join(dockerCertPath, "cert.pem")
+		caFile := filepath.Join(dockerCertPath, "ca.pem")
+		dockerClient, err = docker.NewTLSClient(dockerEndpoint, certFile, keyFile, caFile)
 		if err != nil {
 			log.Fatalf("error: %s", err.Error())
 		}
 	}
 
 	// Setup a new etcd client.
-	etcdClient := etcd.NewClient(strings.Split(etcdPeers, ","))
-	fmt.Println(etcdClient)
 
-	containerName := fmt.Sprintf("/%s", flag.Arg(0))
+	fmt.Println(etcdPeers)
+	etcdClient := etcd.NewClient([]string{})
+	synced := etcdClient.SetCluster(strings.Split(etcdPeers, ","))
+	fmt.Println(synced)
+	fmt.Println(etcdClient)
+	fmt.Println(etcdClient.GetCluster())
+
+	// containerName := fmt.Sprintf("/%s", flag.Arg(0))
 	etcdKey := flag.Arg(1)
-	n := interval.Nanoseconds()
-	nd2 := n / 2
+	nd2 := interval.Nanoseconds() / 2
 
 	// The loop.
-	for {
-
-		sleep := nd2 + rand.Int63n(nd2)
+	for sleep := int64(0); ; sleep = nd2 + rand.Int63n(nd2) {
 		log.Printf("sleeping %d nanoseconds", sleep)
 		time.Sleep(time.Duration(sleep) * time.Nanosecond)
 
-		containers, err := dockerClient.ListContainers(docker.ListContainersOptions{All: true})
+		container, err := dockerClient.InspectContainer(flag.Arg(0))
 		if err != nil {
-			log.Printf("error: %s", err.Error())
+			log.Printf("docker error: %s", err.Error())
 			continue
 		}
 
-		for _, container := range containers {
-			for _, name := range container.Names {
-				if name == containerName {
-					for _, port := range container.Ports {
-						if containerPort == port.PrivatePort {
-							value := fmt.Sprintf("%s:%d", hostIP, port.PublicPort)
-							log.Printf("setting %s", value)
+		for _, portMapping := range container.NetworkSettings.PortMappingAPI() {
 
-							dirs := strings.Split(etcdKey, "/")
-							for i := 2; i < len(dirs); i++ {
-								if _, err := etcdClient.RawSetDir(strings.Join(dirs[0:i], "/"), 0); err != nil {
-									log.Printf("error: %s", err.Error())
-									continue
-								}
-							}
+			// Check if this is the port that we are supposed to be tracking.
+			// Otherwise, keep looking.
+			if portMapping.PrivatePort == containerPort {
 
-							if _, err := etcdClient.Set(etcdKey, value, uint64(interval.Seconds())+1); err != nil {
-								log.Printf("error: %s", err.Error())
-							}
-						}
+				// Set a value to save in etcd based on weather or not we are supposed
+				// to encode a JSON value or not.
+				var value string
+				if useJSON {
+					valueBytes, err := json.Marshal(jsonValue{Host: hostIP, Port: portMapping.PublicPort})
+					if err != nil {
+						log.Printf("json encoding error: %s", err.Error())
+						break
 					}
+
+					value = string(valueBytes)
+				} else {
+					value = fmt.Sprintf("%s:%d", hostIP, portMapping.PublicPort)
 				}
+
+				// Try to sync the cluster before writing.
+				etcdClient.SyncCluster()
+
+				// Log the value and set it in etcd.
+				log.Printf("setting value `%s`", value)
+				if _, err := etcdClient.Set(etcdKey, value, uint64(interval.Seconds())+1); err != nil {
+					log.Printf("etcd error: %s", err.Error())
+					break
+				}
+
+				// We can quit the loop as we've successfully found what we were
+				// looking for.
+				break
 			}
 		}
 	}
