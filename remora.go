@@ -48,7 +48,7 @@ func main() {
 	if dockerCertPath := os.Getenv("DOCKER_CERT_PATH"); dockerCertPath == "" {
 		dockerClient, err = docker.NewClient(dockerEndpoint)
 		if err != nil {
-			log.Fatalf("error: %s", err.Error())
+			log.Fatalf("docker error: %s", err.Error())
 		}
 	} else {
 		keyFile := filepath.Join(dockerCertPath, "key.pem")
@@ -56,7 +56,7 @@ func main() {
 		caFile := filepath.Join(dockerCertPath, "ca.pem")
 		dockerClient, err = docker.NewTLSClient(dockerEndpoint, certFile, keyFile, caFile)
 		if err != nil {
-			log.Fatalf("error: %s", err.Error())
+			log.Fatalf("docker error: %s", err.Error())
 		}
 	}
 
