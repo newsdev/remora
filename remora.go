@@ -1,4 +1,4 @@
-package main // import "github.com/buth/remora"
+package main
 
 import (
 	"encoding/json"
@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/buth/remora/vendor/src/github.com/coreos/go-etcd/etcd"
-	docker "github.com/fsouza/go-dockerclient"
+	"github.com/newsdev/remora/Godeps/_workspace/src/github.com/coreos/go-etcd/etcd"
+	docker "github.com/newsdev/remora/Godeps/_workspace/src/github.com/fsouza/go-dockerclient"
 )
 
 var (

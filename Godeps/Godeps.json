@@ -1,0 +1,19 @@
+{
+	"ImportPath": "github.com/newsdev/remora",
+	"GoVersion": "go1.5.1",
+	"Deps": [
+		{
+			"ImportPath": "github.com/coreos/go-etcd/etcd",
+			"Comment": "v2.0.0-32-g555b418",
+			"Rev": "555b4186480c545106eb89e0158e9fa0c2bebcf6"
+		},
+		{
+			"ImportPath": "github.com/fsouza/go-dockerclient",
+			"Rev": "0239034d42f665efa17fd77c39f891c2f9f32922"
+		},
+		{
+			"ImportPath": "github.com/ugorji/go/codec",
+			"Rev": "718a1bcd1902bb42e926b0e54f6686879f5a9a79"
+		}
+	]
+}
