@@ -1,2 +1,7 @@
-FROM golang:1.4.2-onbuild
-ENTRYPOINT ["go-wrapper", "run"]
+FROM golang:1.5.1
+ADD . /go/src/github.com/newsdev/remora
+WORKDIR /go/src/github.com/newsdev/remora
+RUN \
+  go get github.com/tools/godep && \
+  godep restore
+
