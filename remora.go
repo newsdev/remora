@@ -60,6 +60,9 @@ func main() {
 		}
 	}
 
+	// Set a timeout.
+	dockerClient.HTTPClient.Timeout = interval
+
 	// Setup a new etcd client.
 	etcdClient := etcd.NewClient(strings.Split(etcdPeers, ","))
 
